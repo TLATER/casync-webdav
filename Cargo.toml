@@ -1,0 +1,16 @@
+[package]
+name = "casync-webdav"
+version = "0.1.0"
+authors = ["Tristan Daniël Maat <tristan.maat@codethink.co.uk>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+base64 = "0.12.0"
+hyper = "0.13.3"
+reqwest = { version = "0.10.4", features = ["json"] }
+structopt = "0.3.11"
+tokio = { version = "0.2.13", features = ["macros"] }
+log = "0.4"
+pretty_env_logger = "0.4"
