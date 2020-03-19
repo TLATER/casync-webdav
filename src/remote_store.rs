@@ -285,7 +285,7 @@ impl RemoteStore {
 }
 
 fn chunk_path(sha: &str) -> PathBuf {
-    let path_string = format!("default.castr/{}/{}", &sha[..4], sha);
+    let path_string = format!("default.castr/{}/{}.cacnk", &sha[..4], sha);
     Path::new(&path_string).to_path_buf()
 }
 
