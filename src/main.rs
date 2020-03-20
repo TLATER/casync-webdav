@@ -5,6 +5,7 @@ use pretty_env_logger;
 use reqwest::Url;
 use structopt::StructOpt;
 
+mod ca_index;
 mod ca_store;
 mod remote_store;
 
