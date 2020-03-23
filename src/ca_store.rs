@@ -40,8 +40,10 @@ pub struct CAStore {
 }
 
 impl CAStore {
-    pub fn new(path: PathBuf) -> CAStore {
-        CAStore { path }
+    pub fn new(path: &Path) -> CAStore {
+        CAStore {
+            path: path.to_path_buf(),
+        }
     }
 
     pub fn get_chunks(self: &Self) -> Vec<CAChunk> {
