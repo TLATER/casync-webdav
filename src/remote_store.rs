@@ -12,7 +12,7 @@ pub struct RemoteStore {
 }
 
 impl RemoteStore {
-    pub fn new(webdav_root: Url, store_path: &Path) -> Self {
+    pub fn new(webdav_root: &Url, store_path: &Path) -> Self {
         Self {
             store_root: webdav_root
                 .join(&store_path.to_string_lossy())
@@ -290,8 +290,8 @@ fn chunk_path(sha: &str) -> PathBuf {
 }
 
 fn get_identity(
-    certificate: &Path,
-    password: &str,
+    _certificate: &Path,
+    _password: &str,
 ) -> Result<Identity, Box<dyn std::error::Error>> {
     // let identity = Identity::from_pkcs12_der(&buf, "");
 
