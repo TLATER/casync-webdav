@@ -2,6 +2,7 @@ use std::fs::read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use futures::{stream, StreamExt};
 use log::info;
 use reqwest::header;
 use reqwest::{Client, Identity, Method, StatusCode, Url};
@@ -117,10 +118,10 @@ impl RemoteStore {
         sha: &str,
         path: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let body = read(path)?;
         let remote_path = chunk_path(sha);
+        let data = read(path)?;
 
-        let res = self.push_file(&remote_path, body.clone()).await;
+        let res = self.push_file(&remote_path, &data).await;
         if let Err(e) = res {
             // If we lack parent directories, try to create them and
             // re-send.
@@ -133,7 +134,7 @@ impl RemoteStore {
                 .await?;
 
                 // This time, we don't ignore any errors
-                self.push_file(&remote_path, body).await?;
+                self.push_file(&remote_path, &data).await?;
             } else {
                 return Err(e.into());
             }
@@ -144,13 +145,37 @@ impl RemoteStore {
         Ok(())
     }
 
+    pub async fn send_chunks(
+        &self,
+        chunks: &[(String, PathBuf)],
+        parallelism: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let results: Vec<_> = stream::iter(chunks)
+            .map(|(hash, path)| {
+                async move {
+                    if !self.has_chunk(hash).await? {
+                        self.send_chunk(&hash, path).await
+                    } else {
+                        Ok(())
+                    }
+                }
+            })
+            .buffer_unordered(parallelism).collect().await;
+
+        for result in results {
+            result?;
+        }
+
+        Ok(())
+    }
+
     /// Send a .caidx file to the remote.
     ///
     pub async fn send_index(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let file = read(path)?;
         let name = Path::new(path.file_name().expect("This must be a valid filename"));
 
-        self.push_file(name, file).await?;
+        self.push_file(name, &file).await?;
         Ok(())
     }
 
@@ -266,10 +291,10 @@ impl RemoteStore {
     /// characters, or if the resulting URL is invalid. This should
     /// never happen in practice with casync stores.
     ///
-    async fn push_file(&self, path: &Path, file: Vec<u8>) -> Result<(), reqwest::Error> {
+    async fn push_file(&self, path: &Path, file: &[u8]) -> Result<(), reqwest::Error> {
         self.client()
             .put(self.abspath(path))
-            .body(file)
+            .body(file.to_vec())
             .send()
             .await?
             .error_for_status()?;

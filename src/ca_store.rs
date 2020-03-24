@@ -1,40 +1,5 @@
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
-pub struct CAChunk {
-    path: PathBuf,
-    hash: String,
-}
-
-impl CAChunk {
-    pub fn from_path(path: PathBuf) -> Result<CAChunk, Box<dyn std::error::Error>> {
-        if let Some(hash) = path.clone().file_stem() {
-            if let Some(hash) = hash.to_str() {
-                Ok(CAChunk {
-                    path: path.canonicalize()?,
-                    hash: hash.to_string(),
-                })
-            } else {
-                Err(format!(
-                    "Invalid utf-8 in cacnk path name: {}",
-                    path.to_string_lossy()
-                )
-                .into())
-            }
-        } else {
-            Err(format!("Invalid cacnk path: {}", path.to_string_lossy()).into())
-        }
-    }
-
-    pub fn get_hash(&self) -> &str {
-        &self.hash
-    }
-
-    pub fn get_path(&self) -> &Path {
-        &self.path
-    }
-}
-
 pub struct CAStore {
     path: PathBuf,
 }
@@ -46,17 +11,41 @@ impl CAStore {
         }
     }
 
-    pub fn get_chunks(self: &Self) -> Vec<CAChunk> {
-        self.path
-            .read_dir()
-            .unwrap()
-            .flat_map(|chunk_collection| {
-                chunk_collection
-                    .unwrap()
+    fn chunk_path(&self, hash: &str) -> PathBuf {
+        let subdir: String = hash.chars().take(4).collect();
+        let chunk_path = format!("{}/{}.cacnk", subdir, hash);
+        Path::new(&chunk_path).to_path_buf()
+    }
+
+    pub fn get_chunk_path(&self, hash: &str) -> PathBuf {
+        self.chunk_path(hash)
+    }
+
+    fn get_chunk_paths(self: &Self) -> Result<Vec<PathBuf>, std::io::Error> {
+        Ok(self
+            .path
+            .read_dir()?
+            .flat_map(|chunk_collection| -> Result<Vec<PathBuf>, std::io::Error> {
+                chunk_collection?
                     .path()
-                    .read_dir()
-                    .unwrap()
-                    .map(|chunk| CAChunk::from_path(chunk.unwrap().path()).unwrap())
+                    .read_dir()?
+                    .map(|chunk| Ok(chunk?.path()))
+                    .collect()
+            })
+            .flatten()
+            .collect())
+    }
+
+    pub fn list_chunks(self: &Self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        self.get_chunk_paths()?
+            .iter()
+            .map(|chunk| {
+                Ok(chunk
+                    .file_stem()
+                    .ok_or_else(|| format!("Invalid chunk path: '{:?}'", chunk))?
+                    .to_str()
+                    .ok_or_else(|| format!("Invalid chunk path: '{:?}'", chunk))?
+                    .to_string())
             })
             .collect()
     }

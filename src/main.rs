@@ -9,6 +9,7 @@ mod ca_index;
 mod ca_store;
 mod remote_store;
 
+use ca_index::CaIndex;
 use ca_store::CAStore;
 use remote_store::RemoteStore;
 
@@ -58,25 +59,26 @@ fn remote_set_auth<'a>(
 async fn upload_to_remote(
     remote: &RemoteStore,
     store: &CAStore,
-    index: &Path,
+    index: &CaIndex,
+    index_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Creating remote store root directory...");
     remote.create_store_directory().await?;
 
+    info!("Reading chunks...");
+    let chunks: Vec<(String, PathBuf)> = index
+        .list_chunks()
+        .iter()
+        .map(|hash| (hash.clone(), store.get_chunk_path(&hash)))
+        .collect();
+
     info!("Uploading chunks...");
-    for chunk in store.get_chunks() {
-        if !remote.has_chunk(chunk.get_hash()).await.unwrap() {
-            remote
-                .send_chunk(chunk.get_hash(), chunk.get_path())
-                .await?;
-        }
-    }
+    remote.send_chunks(&chunks, 12).await?;
 
     info!("Uploading index...");
-    remote.send_index(index).await?;
+    remote.send_index(index_path).await?;
 
     info!("Done");
-
     Ok(())
 }
 
@@ -85,7 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
     pretty_env_logger::init();
 
-    let store = ca_store::CAStore::new(&opt.store);
+    let store = CAStore::new(&opt.store);
+    let index = CaIndex::parse(&std::fs::read(&opt.index)?)?;
 
     if let Some(url) = opt.webdav_url {
         let mut remote = RemoteStore::new(&url, &opt.store_root);
@@ -97,10 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             opt.password,
         )?;
 
-        upload_to_remote(remote, &store, &opt.index).await?;
+        upload_to_remote(remote, &store, &index, &opt.index).await?;
     } else {
-        let index = std::fs::read(opt.index)?;
-        for chunk in ca_index::CaIndex::parse(&index)?.list_chunks() {
+        for chunk in index.list_chunks() {
             println!("{}", chunk);
         }
     }
