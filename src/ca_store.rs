@@ -1,52 +1,28 @@
 use std::path::{Path, PathBuf};
 
-pub struct CAStore {
-    path: PathBuf,
+use snafu::Snafu;
+
+#[derive(Debug, Snafu)]
+pub enum StoreError {
+    /// This error is returned when we are asked to operate on a path
+    /// that is not valid inside a casync store; e.g. when it contains
+    /// anything that is not a valid chunk name.
+    #[snafu(display("Invalid store path: '{}'", path.to_string_lossy()))]
+    InvalidStorePath { path: PathBuf },
 }
 
-impl CAStore {
-    pub fn new(path: &Path) -> CAStore {
-        CAStore {
+pub fn chunk_path_from_hash(hash: &str) -> PathBuf {
+    let path_string = format!("{}/{}.cacnk", &hash[..4], hash);
+    Path::new(&path_string).to_path_buf()
+}
+
+pub fn hash_from_chunk_path(path: &Path) -> Result<&str, StoreError> {
+    path.file_stem()
+        .ok_or(StoreError::InvalidStorePath {
             path: path.to_path_buf(),
-        }
-    }
-
-    fn chunk_path(&self, hash: &str) -> PathBuf {
-        let subdir: String = hash.chars().take(4).collect();
-        let chunk_path = format!("{}/{}.cacnk", subdir, hash);
-        Path::new(&chunk_path).to_path_buf()
-    }
-
-    pub fn get_chunk_path(&self, hash: &str) -> PathBuf {
-        self.chunk_path(hash)
-    }
-
-    fn get_chunk_paths(self: &Self) -> Result<Vec<PathBuf>, std::io::Error> {
-        Ok(self
-            .path
-            .read_dir()?
-            .flat_map(|chunk_collection| -> Result<Vec<PathBuf>, std::io::Error> {
-                chunk_collection?
-                    .path()
-                    .read_dir()?
-                    .map(|chunk| Ok(chunk?.path()))
-                    .collect()
-            })
-            .flatten()
-            .collect())
-    }
-
-    pub fn list_chunks(self: &Self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-        self.get_chunk_paths()?
-            .iter()
-            .map(|chunk| {
-                Ok(chunk
-                    .file_stem()
-                    .ok_or_else(|| format!("Invalid chunk path: '{:?}'", chunk))?
-                    .to_str()
-                    .ok_or_else(|| format!("Invalid chunk path: '{:?}'", chunk))?
-                    .to_string())
-            })
-            .collect()
-    }
+        })?
+        .to_str()
+        .ok_or(StoreError::InvalidStorePath {
+            path: path.to_path_buf(),
+        })
 }
