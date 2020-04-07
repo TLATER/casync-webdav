@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 use bytes::Bytes;
 use crypto::digest::Digest;
-use crypto::sha2::Sha256;
 use hyper::header;
 use log::info;
 use reqwest::header::{HeaderName, HeaderValue};
@@ -226,18 +225,8 @@ impl RemoteStore for WebdavStore {
         let url = self.abspath(&chunk_path);
 
         let res = self.pull_file(&url).await?;
-        let mut hasher = Sha256::new();
-        hasher.input(&res.to_vec());
-        let sha = hasher.result_str();
 
-        if hash != sha {
-            Err(RemoteError::InvalidChunkHash {
-                chunk: hash.to_string(),
-                hash: sha,
-            })
-        } else {
-            Ok(res)
-        }
+        Ok(res)
     }
 }
 
