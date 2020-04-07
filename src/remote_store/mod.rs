@@ -20,6 +20,8 @@ pub enum RemoteError {
     Authentication { error: Box<dyn std::error::Error> },
     #[snafu(display("Failed to make request: {}", error))]
     Request { error: reqwest::Error },
+    #[snafu(display("Chunk request failed for chunk: {}", hash))]
+    ChunkRequest { hash: String, error: reqwest::Error },
     #[snafu(display("Could not find chunk with hash '{}' on the remote", hash))]
     NoSuchChunk { hash: String },
     #[snafu(display("Remote content for chunk '{}' had invalid hash '{}", chunk, hash))]

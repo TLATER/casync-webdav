@@ -224,7 +224,13 @@ impl RemoteStore for WebdavStore {
         let chunk_path = Path::new("default.castr/").join(chunk_path_from_hash(hash));
         let url = self.abspath(&chunk_path);
 
-        let res = self.pull_file(&url).await?;
+        let res = match self.pull_file(&url).await {
+            Ok(res) => res,
+            Err(err) => Err(RemoteError::ChunkRequest {
+                hash: hash.to_string(),
+                error: err,
+            })?,
+        };
 
         Ok(res)
     }

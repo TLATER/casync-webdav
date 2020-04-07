@@ -1,6 +1,9 @@
+use std::convert::TryInto;
 use std::path::{Path, PathBuf};
+use std::process::exit;
 
 use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, info};
 use pretty_env_logger;
 use reqwest::Url;
@@ -11,7 +14,7 @@ mod ca_store;
 mod remote_store;
 
 use ca_index::CaIndex;
-use ca_store::chunk_path_from_hash;
+use ca_store::{chunk_path_from_hash, hash_from_chunk_path};
 use remote_store::{pull_chunks, push_chunks, RemoteError, RemoteStore, WebdavStore};
 
 /* CLI parsing */
@@ -112,6 +115,24 @@ fn parse_directory(dir: &str) -> PathBuf {
 }
 
 /* Main function helpers */
+
+fn make_progressbar(length: usize) -> ProgressBar {
+    let progress = ProgressBar::new(
+        length
+            .try_into()
+            .expect("Number of chunks must be less than a 64 bit number."),
+    );
+    progress.set_style(
+        ProgressStyle::default_bar()
+            .template(
+                "{spinner:.yellow} [{elapsed_precise}] [{bar:40.cyan/blue}] {wide_msg:10} ({eta})",
+            )
+            .progress_chars("#>-"),
+    );
+
+    progress.enable_steady_tick(100);
+    progress
+}
 
 fn read_index_from_file(path: &PathBuf) -> Result<CaIndex, String> {
     let data = match std::fs::read(path) {
@@ -214,19 +235,37 @@ async fn main() {
                 error!("Failed to create remote store: {}", err);
             };
             info!("Sending chunks");
+            let progress = make_progressbar(chunks.len());
             push_chunks(&remote, &chunks)
                 .for_each_concurrent(12, |path| {
                     async {
-                        let path = path.await;
-
-                        match path {
-                            Ok(path) => info!("Sent path {}", path.display()),
-                            Err(err) => error!("Failed to send path: {}", err),
+                        match path.await {
+                            Ok(path) => {
+                                progress.inc(1);
+                                progress.set_message(&format!(
+                                    "Pushed {}",
+                                    hash_from_chunk_path(&path)
+                                        .expect("At this point it should be a correct path")
+                                ))
+                            }
+                            Err(RemoteError::ChunkRequest { hash, error }) => {
+                                progress.abandon_with_message(&format!(
+                                    "Failed to push path: {}",
+                                    hash
+                                ));
+                                error!("{}", error);
+                                exit(1);
+                            }
+                            Err(err) => {
+                                progress.abandon();
+                                error!("{}", err);
+                                exit(1);
+                            },
                         }
                     }
                 })
                 .await;
-
+            progress.finish();
             info!("Sent chunks!");
         }
         Command::Pull { index, webdav_url } => {
@@ -264,18 +303,37 @@ async fn main() {
                 .collect();
 
             info!("Downloading chunks");
+            let progress = make_progressbar(chunks.len());
             pull_chunks(&remote, &chunks)
                 .for_each_concurrent(12, |path| {
                     async {
-                        let path = path.await;
-
-                        match path {
-                            Ok(path) => info!("Sent path {}", path.display()),
-                            Err(err) => error!("Failed to pull path: {}", err),
+                        match path.await {
+                            Ok(path) => {
+                                progress.inc(1);
+                                progress.set_message(&format!(
+                                    "Pulled {}",
+                                    hash_from_chunk_path(&path)
+                                        .expect("At this point it should be a correct path")
+                                ))
+                            }
+                            Err(RemoteError::ChunkRequest { hash, error }) => {
+                                progress.abandon_with_message(&format!(
+                                    "Failed to pull path: {}",
+                                    hash
+                                ));
+                                error!("{}", error);
+                                exit(1);
+                            }
+                            Err(err) => {
+                                progress.abandon();
+                                error!("{}", err);
+                                exit(1);
+                            }
                         }
                     }
                 })
                 .await;
+            progress.finish();
             info!("Downloaded chunks!");
         }
     }
