@@ -202,7 +202,11 @@ impl RemoteStore for WebdavStore {
         if let Err(e) = res {
             // If we lack parent directories, try to create them and
             // re-send.
-            if let Some(StatusCode::NOT_FOUND) = e.status() {
+            //
+            // We're assuming any client error may be a missing parent
+            // directory issue, because this doesn't appear to be
+            // standardized.
+            if let Some(true) = e.status().map(|status| status.is_client_error()) {
                 self.create_path_recursively(
                     chunk_path
                         .parent()
