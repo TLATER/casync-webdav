@@ -25,6 +25,9 @@ struct Opt {
     /// The store to load chunks from.
     #[structopt(short, long, parse(from_str = parse_directory), default_value = "default.castr/")]
     store: PathBuf,
+    /// How many chunks to process in parallel
+    #[structopt(short = "j", long, default_value = "8")]
+    parallelism: usize,
     /// The client certificate to use for authentication to the remote.
     #[structopt(short = "c", long)]
     client_certificate: Option<PathBuf>,
@@ -237,7 +240,7 @@ async fn main() {
             info!("Sending chunks");
             let progress = make_progressbar(chunks.len());
             push_chunks(&remote, &chunks)
-                .for_each_concurrent(12, |path| {
+                .for_each_concurrent(opt.parallelism, |path| {
                     async {
                         match path.await {
                             Ok(path) => {
@@ -305,7 +308,7 @@ async fn main() {
             info!("Downloading chunks");
             let progress = make_progressbar(chunks.len());
             pull_chunks(&remote, &chunks)
-                .for_each_concurrent(12, |path| {
+                .for_each_concurrent(opt.parallelism, |path| {
                     async {
                         match path.await {
                             Ok(path) => {
