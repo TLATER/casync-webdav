@@ -14,6 +14,21 @@ use trait_async::trait_async;
 use crate::ca_store::chunk_path_from_hash;
 use crate::remote_store::{RemoteError, RemoteStore};
 
+macro_rules! retry_request {
+    ($request:expr) => {{
+        let mut retries: usize = 3;
+
+        loop {
+            let res = $request.await?;
+
+            retries -= 1;
+            if res.status().is_success() || retries <= 0 {
+                break res;
+            }
+        }
+    }};
+}
+
 #[derive(Clone)]
 pub struct WebdavStore {
     remote_root: Url,
@@ -134,14 +149,13 @@ impl WebdavStore {
     /// never happen in practice with casync stores.
     ///
     async fn create_dir_if_not_exists(&self, path: &Path) -> Result<bool, reqwest::Error> {
-        let response = self
+        let response = retry_request!(self
             .client()
             .request(
                 Method::from_str("MKCOL").expect("MKOL should be a valid method"),
                 self.abspath(path),
             )
-            .send()
-            .await?;
+            .send());
 
         if response.status() != StatusCode::METHOD_NOT_ALLOWED {
             response.error_for_status()?;
@@ -156,25 +170,21 @@ impl WebdavStore {
     }
 
     async fn push_file(&self, path: &Url, file: Bytes) -> Result<(), reqwest::Error> {
-        self.client()
-            .put(path.clone())
-            .body(file.to_vec())
-            .send()
-            .await?
-            .error_for_status()?;
+        retry_request!(
+            self.client()
+                .put(path.clone())
+                .body(file.to_vec())
+                .send()
+        )
+        .error_for_status()?;
 
         Ok(())
     }
 
     async fn pull_file(&self, path: &Url) -> Result<Bytes, reqwest::Error> {
-        let res = self
-            .client()
-            .get(path.clone())
-            .send()
-            .await?
-            .error_for_status()?;
+        let res = retry_request!(self.client().get(path.clone()).send()).error_for_status();
 
-        Ok(res.bytes().await?)
+        Ok(res?.bytes().await?)
     }
 }
 
