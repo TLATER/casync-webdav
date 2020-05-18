@@ -8,12 +8,19 @@ edition = "2018"
 
 [dependencies]
 base64 = "0.12.0"
+bytes = "0.5.4"
 futures = "0.3.4"
 hyper = "0.13.3"
+indicatif = "0.14.0"
 nom = "5.1.1"
-reqwest = { version = "0.10.4", features = ["json"] }
+reqwest = { version = "0.10.4", features = ["json", "native-tls", "rustls-tls"] }
+rust-crypto = "0.2.36"
 snafu = "0.6.3"
 structopt = "0.3.11"
 tokio = { version = "0.2.13", features = ["macros"] }
+trait-async = "0.1.24"
 log = "0.4"
 pretty_env_logger = "0.4"
+
+[dev-dependencies]
+assert_fs = "1.0.0"
