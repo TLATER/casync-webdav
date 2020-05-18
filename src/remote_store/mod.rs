@@ -61,14 +61,16 @@ pub trait RemoteStore {
 pub fn push_chunks<'a>(
     remote: &'a (impl RemoteStore + Clone),
     chunks: &'a [PathBuf],
-) -> impl StreamExt<Item = impl std::future::Future<Output = Result<PathBuf, RemoteError>> + 'a> {
+) -> impl StreamExt<Item = impl std::future::Future<Output = Result<(PathBuf, bool), RemoteError>> + 'a>
+{
     stream::iter(chunks.to_vec()).map(move |path| {
         let mut remote = remote.clone();
 
         async move {
             let hash = hash_from_chunk_path(&path)?;
+            let should_send = !remote.has_chunk(hash).await?;
 
-            if !remote.has_chunk(hash).await? {
+            if should_send {
                 let mut data = Vec::new();
                 let mut f = File::open(&path)?;
                 f.read_to_end(&mut data)?;
@@ -76,7 +78,7 @@ pub fn push_chunks<'a>(
                 remote.send_chunk(&hash, Bytes::from(data)).await?;
             }
 
-            Ok::<PathBuf, RemoteError>(path)
+            Ok::<(PathBuf, bool), RemoteError>((path, should_send))
         }
     })
 }

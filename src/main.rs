@@ -240,13 +240,14 @@ async fn main() {
             info!("Sending chunks");
             let progress = make_progressbar(chunks.len());
             push_chunks(&remote, &chunks)
-                .for_each_concurrent(opt.parallelism, |path| {
+                .for_each_concurrent(opt.parallelism, |sent| {
                     async {
-                        match path.await {
-                            Ok(path) => {
+                        match sent.await {
+                            Ok((path, sent)) => {
                                 progress.inc(1);
                                 progress.set_message(&format!(
-                                    "Pushed {}",
+                                    "{} {}",
+                                    if sent { "Pushed" } else { "Skipped" },
                                     hash_from_chunk_path(&path)
                                         .expect("At this point it should be a correct path")
                                 ))
@@ -263,7 +264,7 @@ async fn main() {
                                 progress.abandon();
                                 error!("{}", err);
                                 exit(1);
-                            },
+                            }
                         }
                     }
                 })
